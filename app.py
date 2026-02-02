@@ -80,3 +80,4 @@ if generate_btn:
         status.update(label="❌ Connection Error", state="error")
         st.error(f"Error: {e}")
         st.info("Hint: Check if the 'api_name' in the code matches your Pinokio API (usually /predict or /generate)")
+
