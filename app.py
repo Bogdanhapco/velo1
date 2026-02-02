@@ -3,72 +3,80 @@ from gradio_client import Client
 import os
 
 # --- 1. CONFIGURATION ---
-# PASTE YOUR PINOKIO / GRADIO LINK HERE
+# IMPORTANT: Update this link every time you restart Pinokio
 FIXED_GRADIO_URL = "https://b2eca5eb64757141e9.gradio.live" 
 
-st.set_page_config(page_title="Velo 1", page_icon="🎬", layout="centered")
-st.title("🎬 AI Video Generator")
-st.caption("Powered by Velo 1")
+st.set_page_config(page_title="Velo 1", page_icon="🎥", layout="centered")
+st.title("🎥 Velo 1")
+st.caption("AI Video Generation")
 
-# --- 2. SMART SIDEBAR SETTINGS ---
+# --- 2. SMART SIDEBAR (LTX-2 LOGIC) ---
 with st.sidebar:
-    st.header("⚙️ Video Settings")
+    st.header("⚙️ Render Settings")
     
-    # Step 1: User picks Resolution
-    quality = st.select_slider("Quality", options=["480p", "720p", "1080p"], value="720p")
+    # LTX-2 works best at these steps
+    quality = st.select_slider("Resolution", options=["480p", "720p", "1080p"], value="720p")
     
-    # Step 2: LOGIC - Change options based on Resolution
     if quality == "1080p":
-        st.warning("⚠️ 1080p is limited to save GPU memory because of current model training")
-        # Forced options for 1080p
-        aspect = st.selectbox("Aspect Ratio", ["9:16 (TikTok/Reels)"]) # Only one option
-        duration = st.slider("Duration (Seconds)", min_value=5, max_value=10, value=10, disabled=True) # Locked at 10
-        
+        st.warning("⚠️ 1080p locked to 9:16 and 10s to prevent H100's crashing. because of current model training")
+        aspect = "9:16"
+        duration = 10 # Seconds
     else:
-        # Free options for 480p / 720p
-        aspect = st.radio("Aspect Ratio", ["16:9 (Wide)", "9:16 (Tall)", "1:1 (Square)"]) 
-        duration = st.slider("Duration (Seconds)", min_value=5, max_value=15, value=10)
+        aspect = st.radio("Aspect Ratio", ["16:9", "9:16", "1:1"])
+        duration = st.slider("Duration (Seconds)", 5, 15, 10)
 
     st.divider()
-    st.markdown(f"**Status:** Connected ✅")
+    st.info("Queue is active. Your request will process as soon as two of our GPU's is free.")
 
 # --- 3. MAIN INTERFACE ---
-prompt = st.text_area("Describe your video:", "A cinematic drone shot of a futuristic city...", height=120)
+prompt = st.text_area("Video Prompt:", "A cinematic shot of a red car driving through a forest, high detail, 4k", height=100)
+negative_prompt = st.text_input("Negative Prompt (Optional):", "blurry, low quality, distorted")
+
 generate_btn = st.button("Generate Video", type="primary", use_container_width=True)
 
 if generate_btn:
-    if not FIXED_GRADIO_URL or "your-link-here" in FIXED_GRADIO_URL:
-        st.error("🚨 Data Center is down!")
+    if not FIXED_GRADIO_URL or "your-link" in FIXED_GRADIO_URL:
+        st.error("Owner must update the Gradio Link!")
         st.stop()
 
-    status_box = st.status("🚀 Connecting to GPU...", expanded=True)
+    status = st.status("🚀 Sending to Velo 1...", expanded=True)
     
     try:
+        # Connect to your PC
         client = Client(FIXED_GRADIO_URL)
-        status_box.write(f"⏳ Processing: {quality}, {aspect}, {duration}s...")
         
-        # NOTE: Check your 'View API' link! 
-        # You might need to change 'seconds' to 'length', 'duration', or 'video_length'
+        # LTX-2 typically expects these inputs in this order.
+        # If it fails, we use the 'api_name' trick.
+        status.write("⏳ Waiting in GPU's Queue...")
+        
         result = client.predict(
-            prompt,           
-            quality,          
-            aspect,
-            duration,         # We now pass the duration too!
-            api_name="/predict" 
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            # We convert seconds to frames (LTX-2 usually runs at 24fps or 16fps)
+            # Most Pinokio LTX-2 wrappers just take the raw number of seconds/frames
+            num_frames=duration * 8, # Adjust multiplier based on your specific script
+            aspect_ratio=aspect,
+            resolution=quality,
+            seed=-1, # -1 usually means random
+            api_name="/predict" # If this fails, try "/generate"
         )
         
-        status_box.update(label="✅ Complete!", state="complete", expanded=False)
+        status.update(label="✅ Video Ready!", state="complete", expanded=False)
+        
+        # Display Video
         st.video(result)
         
+        # Download Button
         with open(result, "rb") as f:
             st.download_button(
-                label="📥 Download MP4",
+                label="📥 Download Video",
                 data=f,
-                file_name="ai_video.mp4",
+                file_name="velo_video.mp4",
                 mime="video/mp4",
                 use_container_width=True
             )
 
     except Exception as e:
-        status_box.update(label="❌ Error", state="error")
+        status.update(label="❌ Connection Error", state="error")
         st.error(f"Error: {e}")
+        st.info("Hint: Check if the 'api_name' in the code matches your Pinokio API (usually /predict or /generate)")
